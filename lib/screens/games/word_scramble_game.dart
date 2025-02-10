@@ -92,14 +92,11 @@ class _WordScrambleGameState extends State<WordScrambleGame>
       _userInput = '';
 
       if (_isCorrect) {
-        // Play success animation
         _animationController.forward().then((_) {
           _animationController.reverse();
         });
+        // Add points to local score only
         _score += 10;
-        // Update score immediately
-        ScoreService.updateGameScore(10);
-        // Show success popup
         _showSuccessPopup();
         _currentIndex++;
         Future.delayed(const Duration(milliseconds: 1000), () {
@@ -122,6 +119,9 @@ class _WordScrambleGameState extends State<WordScrambleGame>
   }
 
   void _showGameComplete() {
+    // Add total score only when game is completed
+    ScoreService.updateGameScore(_score);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -146,6 +146,7 @@ class _WordScrambleGameState extends State<WordScrambleGame>
     showDialog(
       context: context,
       barrierColor: Colors.black26,
+      barrierDismissible: false,
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -206,7 +207,9 @@ class _WordScrambleGameState extends State<WordScrambleGame>
 
     // Auto-dismiss after 1 second
     Future.delayed(const Duration(seconds: 1), () {
-      Navigator.of(context).pop();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
     });
   }
 

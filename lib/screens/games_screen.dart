@@ -7,7 +7,7 @@ import '../screens/games/word_scramble_game.dart';
 import '../screens/games/memory_match_game.dart';
 import '../screens/games/word_search_game.dart';
 import '../screens/games/hangman_game.dart';
-import '../services/score_service.dart';  // Add this import
+import '../services/score_service.dart'; // Add this import
 
 class GamesScreen extends StatefulWidget {
   const GamesScreen({super.key});
@@ -40,13 +40,15 @@ class _GamesScreenState extends State<GamesScreen> {
   }
 
   Future<void> _loadTotalScore() async {
+    if (!mounted) return;
+
     final gameScore = await ScoreService.getGameScore();
-    if (gameScore != _totalScore) {
-      setState(() {
-        _totalScore = gameScore;
-        _calculateLevel();
-      });
-    }
+    final practiceScore = await ScoreService.getPracticeScore();
+
+    setState(() {
+      _totalScore = gameScore + practiceScore;
+      _calculateLevel();
+    });
   }
 
   void _calculateLevel() {

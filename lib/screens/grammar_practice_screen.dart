@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import '../services/progress_service.dart';
 import 'package:provider/provider.dart';
 import '../widgets/practice_results_dialog.dart';
+import '../data/grammar_questions.dart';
+import '../models/practice_question.dart';
 
 class GrammarPracticeScreen extends StatefulWidget {
-  const GrammarPracticeScreen({super.key});
+  final String level;
+  const GrammarPracticeScreen({super.key, required this.level});
 
   @override
   State<GrammarPracticeScreen> createState() => _GrammarPracticeScreenState();
@@ -29,59 +32,25 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
   double masteryAnimation = 0.0;
   int questionsAnswered = 0;
   late DateTime _startTime;
+  late DateTime _questionStartTime;
+  late List<PracticeQuestion> questions;
 
   // Update color palette to match games screen
-  static const Color primaryColor = Color(0xFFFF5A1A); // Orange from games screen
-  static const Color secondaryColor = Color(0xFF2F6FED); // Blue from games screen
+  static const Color primaryColor =
+      Color(0xFFFF5A1A); // Orange from games screen
+  static const Color secondaryColor =
+      Color(0xFF2F6FED); // Blue from games screen
   static const Color accentColor = Color(0xFF4CAF50); // Green from games screen
   static const Color backgroundColor = Color(0xFFF7F0EB); // Light background
   static const Color surfaceColor = Colors.white;
   static const Color textColor = Color(0xFF1C1C1E);
-
-  final List<Map<String, dynamic>> questions = [
-    {
-      'question': 'Choose the correct form of the verb:',
-      'sentence': 'She ___ to the store yesterday.',
-      'options': ['go', 'goes', 'went', 'gone'],
-      'correct': 2,
-    },
-    {
-      'question': 'Select the correct tense:',
-      'sentence': 'I ___ my homework right now.',
-      'options': ['do', 'am doing', 'did', 'have done'],
-      'correct': 1,
-    },
-    {
-      'question': 'Pick the right preposition:',
-      'sentence': 'The book is ___ the table.',
-      'options': ['in', 'on', 'at', 'by'],
-      'correct': 1,
-    },
-    {
-      'question': 'Choose the correct article:',
-      'sentence': 'I saw ___ elephant at the zoo.',
-      'options': ['a', 'an', 'the', 'no article'],
-      'correct': 1,
-    },
-    {
-      'question': 'Select the right pronoun:',
-      'sentence': '___ are going to the party tonight.',
-      'options': ['We', 'Him', 'She', 'I'],
-      'correct': 0,
-    },
-    {
-      'question': 'Choose the correct modal verb:',
-      'sentence': 'You ___ study hard to pass the exam.',
-      'options': ['can', 'must', 'might', 'would'],
-      'correct': 1,
-    },
-  ];
 
   final progressService = ProgressService();
 
   @override
   void initState() {
     super.initState();
+    questions = GrammarQuestions.questions[widget.level] ?? [];
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -93,6 +62,7 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _startTime = DateTime.now();
+    _questionStartTime = DateTime.now();
   }
 
   Color _getButtonColor(int index) {
@@ -100,7 +70,7 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
       return primaryColor;
     }
 
-    final correctIndex = questions[currentQuestion]['correct'] as int;
+    final correctIndex = questions[currentQuestion].correct as int;
     if (index == correctIndex) {
       return accentColor;
     }
@@ -113,19 +83,15 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
   void _checkAnswer(int index) {
     if (isAnswered) return;
 
-    final correctIndex = questions[currentQuestion]['correct'] as int;
+    final timeSpent = DateTime.now().difference(_questionStartTime);
+    final correctIndex = questions[currentQuestion].correct as int;
     setState(() {
       isAnswered = true;
       selectedAnswer = index;
 
       if (index == correctIndex) {
         correctAnswers++;
-        final points = Provider.of<ProgressService>(context, listen: false)
-            .calculatePoints(
-          correctAnswers: correctAnswers,
-          totalQuestions: questions.length,
-          streak: correctAnswers,
-        );
+        final points = _calculateTimeBonus(timeSpent);
         currentPoints += points;
 
         // Update progress immediately
@@ -156,6 +122,8 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
             currentQuestion++;
             isAnswered = false;
             selectedAnswer = -1;
+            _questionStartTime =
+                DateTime.now(); // Reset timer for next question
           } else {
             _showFinalResults();
           }
@@ -169,7 +137,9 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
     final minutes = timeSpent.inMinutes;
     final seconds = timeSpent.inSeconds % 60;
     final percentage = (correctAnswers / questions.length * 100).round();
-    final points = (percentage * 10).round();
+
+    // Use currentPoints which is already calculated correctly (10 + bonus per question)
+    final points = currentPoints;
 
     // Final update to progress
     Provider.of<ProgressService>(context, listen: false).updateCategoryProgress(
@@ -284,7 +254,7 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
                                 child: Transform.translate(
                                   offset: Offset(0, 20 * (1 - value)),
                                   child: Text(
-                                    'Correct answer: ${questions[currentQuestion]['options'][questions[currentQuestion]['correct']]}',
+                                    'Correct answer: ${questions[currentQuestion].options[questions[currentQuestion].correct]}',
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.9),
                                       fontSize: 16,
@@ -538,7 +508,7 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        questions[currentQuestion]['question'] as String,
+                        questions[currentQuestion].question as String,
                         style: TextStyle(
                           fontFamily: 'CraftworkGrotesk',
                           color: textColor,
@@ -548,7 +518,7 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        questions[currentQuestion]['sentence'] as String,
+                        questions[currentQuestion].sentence as String,
                         style: TextStyle(
                           fontFamily: 'CraftworkGrotesk',
                           color: textColor.withOpacity(0.8),
@@ -562,7 +532,7 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
                 const SizedBox(height: 16),
                 Column(
                   children: List.generate(
-                    (questions[currentQuestion]['options'] as List).length,
+                    (questions[currentQuestion].options as List).length,
                     (index) => Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
@@ -593,7 +563,8 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
                                   width: 32,
                                   height: 32,
                                   decoration: BoxDecoration(
-                                    color: _getButtonColor(index).withOpacity(0.1),
+                                    color:
+                                        _getButtonColor(index).withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Center(
@@ -611,7 +582,7 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Text(
-                                    questions[currentQuestion]['options'][index],
+                                    questions[currentQuestion].options[index],
                                     style: TextStyle(
                                       fontFamily: 'CraftworkGrotesk',
                                       color: textColor,
@@ -771,6 +742,21 @@ class _GrammarPracticeScreenState extends State<GrammarPracticeScreen>
     if (mastery >= 0.7) return const Color(0xFF2F6FED);
     if (mastery >= 0.5) return const Color(0xFFFFA726);
     return const Color(0xFFE53935);
+  }
+
+  int _calculateTimeBonus(Duration timeSpent) {
+    const int basePoints = 10;
+    const int maxTimeBonus = 5;
+    const int timeThreshold = 10;
+
+    final seconds = timeSpent.inSeconds;
+    if (seconds <= timeThreshold) {
+      final bonus =
+          ((timeThreshold - seconds) / timeThreshold * maxTimeBonus).round();
+      return basePoints + bonus;
+    }
+
+    return basePoints;
   }
 
   @override

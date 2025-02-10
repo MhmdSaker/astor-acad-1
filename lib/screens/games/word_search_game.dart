@@ -6,6 +6,7 @@ import 'dart:ui';
 import '../../theme/text_styles.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/score_service.dart';
+import '../../widgets/game_completion_dialog.dart';
 
 class WordSearchGame extends StatefulWidget {
   const WordSearchGame({super.key});
@@ -22,6 +23,7 @@ class _WordSearchGameState extends State<WordSearchGame> {
   final int _gridSize = 10;
   String _selectedWord = '';
   List<int> _selectedCells = [];
+  late Set<int> _foundCells = {};
 
   @override
   void initState() {
@@ -34,6 +36,7 @@ class _WordSearchGameState extends State<WordSearchGame> {
   void _initializeGame() {
     _grid = List.generate(_gridSize, (_) => List.filled(_gridSize, ''));
     _foundWords = List.filled(_words.length, false);
+    _foundCells = {};
 
     // Place words in random positions
     final random = Random();
@@ -42,7 +45,7 @@ class _WordSearchGameState extends State<WordSearchGame> {
       while (!placed) {
         // Randomly choose between horizontal and vertical placement
         bool isHorizontal = random.nextBool();
-        
+
         if (isHorizontal) {
           // Try to place horizontally
           int row = random.nextInt(_gridSize);
@@ -148,6 +151,7 @@ class _WordSearchGameState extends State<WordSearchGame> {
               if (_selectedWord == _words[i] && !_foundWords[i]) {
                 _foundWords[i] = true;
                 _score += 10;
+                _foundCells.addAll(_selectedCells);
                 _showWordFound(_words[i]);
                 break;
               }
@@ -173,9 +177,6 @@ class _WordSearchGameState extends State<WordSearchGame> {
     _selectedCells.clear();
     _selectedWord = '';
 
-    // Update score immediately when word is found
-    await ScoreService.updateGameScore(10);
-
     // Check if all words are found
     if (_foundWords.every((found) => found)) {
       _showGameComplete();
@@ -183,8 +184,9 @@ class _WordSearchGameState extends State<WordSearchGame> {
   }
 
   void _showGameComplete() async {
-    // Show completion dialog
-    if (!mounted) return;
+    // Add total score only when game is completed
+    await ScoreService.updateGameScore(_score);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -334,7 +336,8 @@ class _WordSearchGameState extends State<WordSearchGame> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: _foundWords.where((found) => found).length / _words.length,
+                          value: _foundWords.where((found) => found).length /
+                              _words.length,
                           backgroundColor: Colors.white.withOpacity(0.2),
                           valueColor: const AlwaysStoppedAnimation<Color>(
                             Colors.white,
@@ -442,9 +445,13 @@ class _WordSearchGameState extends State<WordSearchGame> {
                         decoration: BoxDecoration(
                           color: _selectedCells.contains(index)
                               ? const Color(0xFF2F6FED)
-                              : Colors.white,
+                              : _foundCells.contains(index)
+                                  ? const Color(0xFF4CAF50).withOpacity(0.1)
+                                  : Colors.white,
                           border: Border.all(
-                            color: const Color(0xFFFF5A1A).withOpacity(0.2),
+                            color: _foundCells.contains(index)
+                                ? const Color(0xFF4CAF50)
+                                : const Color(0xFFFF5A1A).withOpacity(0.2),
                           ),
                           borderRadius: BorderRadius.circular(4),
                         ),
@@ -455,7 +462,9 @@ class _WordSearchGameState extends State<WordSearchGame> {
                               fontFamily: 'CraftworkGrotesk',
                               color: _selectedCells.contains(index)
                                   ? Colors.white
-                                  : const Color(0xFF141414),
+                                  : _foundCells.contains(index)
+                                      ? const Color(0xFF4CAF50)
+                                      : const Color(0xFF141414),
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
                             ),
@@ -466,165 +475,6 @@ class _WordSearchGameState extends State<WordSearchGame> {
                   },
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class GameCompletionDialog extends StatelessWidget {
-  final String title;
-  final String message;
-  final int score;
-  final bool success;
-  final VoidCallback onPlayAgain;
-
-  const GameCompletionDialog({
-    super.key,
-    required this.title,
-    required this.message,
-    required this.score,
-    required this.success,
-    required this.onPlayAgain,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: success
-                ? const Color(0xFFFF5A1A).withOpacity(0.3)
-                : const Color(0xFFFF5A1A).withOpacity(0.3),
-            width: 2,
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Animation
-            SizedBox(
-              height: 120,
-              child: Lottie.asset(
-                success
-                    ? 'assets/animations/success.json'
-                    : 'assets/animations/game-over.json',
-                repeat: success,
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Title
-            Text(
-              title,
-              style: TextStyle(
-                color:
-                    success ? const Color(0xFF4CAF50) : const Color(0xFFE53935),
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            // Message
-            Text(
-              message,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 16,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            // Score
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.stars_rounded,
-                    color: Color(0xFFFFD700),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Score: $score',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            // Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    Navigator.of(context).pop(); // Return to games menu
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white.withOpacity(0.1),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.games),
-                      SizedBox(width: 8),
-                      Text('Games Menu'),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                ElevatedButton(
-                  onPressed: onPlayAgain,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: success
-                        ? const Color(0xFF4CAF50)
-                        : const Color(0xFF2F6FED),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.replay_rounded),
-                      SizedBox(width: 8),
-                      Text('Play Again'),
-                    ],
-                  ),
-                ),
-              ],
             ),
           ],
         ),

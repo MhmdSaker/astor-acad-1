@@ -117,8 +117,6 @@ class _MemoryMatchGameState extends State<MemoryMatchGame>
         setState(() {
           _matchedCards.addAll(_selectedCards);
           _score += 10;
-          // Update score immediately
-          ScoreService.updateGameScore(10);
         });
 
         // Check if all pairs are matched
@@ -165,9 +163,8 @@ class _MemoryMatchGameState extends State<MemoryMatchGame>
   }
 
   void _showGameComplete() {
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _updateTotalScore(_score);
-    });
+    // Add total score only when game is completed
+    ScoreService.updateGameScore(_score);
 
     showDialog(
       context: context,
@@ -322,7 +319,8 @@ class _MemoryMatchGameState extends State<MemoryMatchGame>
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: (_matchedCards.length ~/ 2) / (_cards.length ~/ 2),
+                          value: (_matchedCards.length ~/ 2) /
+                              (_cards.length ~/ 2),
                           backgroundColor: Colors.white.withOpacity(0.2),
                           valueColor: const AlwaysStoppedAnimation<Color>(
                             Colors.white,

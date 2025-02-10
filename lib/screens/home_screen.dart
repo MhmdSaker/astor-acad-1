@@ -10,6 +10,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import '../services/score_service.dart';
 import '../screens/profile_screen.dart';
+import '../screens/voice_chat_screen.dart';
+import '../screens/level_progress_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -32,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ConfettiController(duration: const Duration(seconds: 2));
     _loadRewardStatus();
     _loadPoints();
-    // Add listener to refresh points periodically
+    // Refresh points every second
     Timer.periodic(const Duration(seconds: 1), (_) {
       _loadPoints();
     });
@@ -52,9 +54,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadPoints() async {
-    final totalScore = await ScoreService.getTotalScore();
+    if (!mounted) return;
+
+    final gameScore = await ScoreService.getGameScore();
+    final practiceScore = await ScoreService.getPracticeScore();
+
     setState(() {
-      _totalPoints = totalScore;
+      _totalPoints = gameScore + practiceScore;
     });
   }
 
@@ -63,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final prefs = await SharedPreferences.getInstance();
     await ScoreService.updatePracticeScore(_streakDays);
-    
+
     setState(() {
       _hasClaimedReward = true;
     });
@@ -120,8 +126,69 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int _calculateLevel() {
-    const pointsPerLevel = 100;
-    return (_totalPoints / pointsPerLevel).floor() + 1;
+    // Base points needed for first level
+    int basePoints = 100;
+    // How much more points each level needs (20% increase per level)
+    double increaseRate = 0.2;
+
+    int currentPoints = _totalPoints;
+    int level = 0;
+    int pointsNeeded = basePoints;
+
+    while (currentPoints >= pointsNeeded) {
+      currentPoints -= pointsNeeded;
+      level++;
+      // Increase points needed for next level by 20%
+      pointsNeeded = (basePoints * (1 + (increaseRate * level))).round();
+    }
+
+    return level + 1; // Add 1 since levels start at 1
+  }
+
+  double _calculateProgressToNextLevel() {
+    int basePoints = 100;
+    double increaseRate = 0.2;
+
+    int currentPoints = _totalPoints;
+    int level = 0;
+    int pointsNeeded = basePoints;
+
+    // Find current level's required points
+    while (currentPoints >= pointsNeeded) {
+      currentPoints -= pointsNeeded;
+      level++;
+      pointsNeeded = (basePoints * (1 + (increaseRate * level))).round();
+    }
+
+    // Calculate progress percentage to next level
+    return currentPoints / pointsNeeded;
+  }
+
+  int _getPointsNeededForNextLevel() {
+    int basePoints = 100;
+    double increaseRate = 0.2;
+
+    int currentPoints = _totalPoints;
+    int level = 0;
+    int pointsNeeded = basePoints;
+
+    while (currentPoints >= pointsNeeded) {
+      currentPoints -= pointsNeeded;
+      level++;
+      pointsNeeded = (basePoints * (1 + (increaseRate * level))).round();
+    }
+
+    return pointsNeeded - currentPoints;
+  }
+
+  Future<Map<String, int>> _getScoreBreakdown() async {
+    final gameScore = await ScoreService.getGameScore();
+    final practiceScore = await ScoreService.getPracticeScore();
+    return {
+      'games': gameScore,
+      'practice': practiceScore,
+      'total': gameScore + practiceScore,
+    };
   }
 
   @override
@@ -150,7 +217,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => const ProfileScreen(),
+                                      builder: (context) =>
+                                          const ProfileScreen(),
                                     ),
                                   );
                                 },
@@ -183,12 +251,45 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 Row(
                                   children: [
-                                    Text(
-                                      '${_getLevelName(_calculateLevel())} - Level ${_calculateLevel()}',
-                                      style: TextStyle(
-                                        color: const Color(0xFF141414)
-                                            .withOpacity(0.7),
-                                        fontSize: 16,
+                                    GestureDetector(
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (context) =>
+                                                LevelProgressScreen(
+                                              totalPoints: _totalPoints,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            '${_getLevelName(_calculateLevel())} - Level ${_calculateLevel()}',
+                                            style: TextStyle(
+                                              color: const Color(0xFF141414)
+                                                  .withOpacity(0.7),
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '(${_getPointsNeededForNextLevel()} pts to next)',
+                                            style: TextStyle(
+                                              color: const Color(0xFF141414)
+                                                  .withOpacity(0.5),
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Icon(
+                                            Icons.arrow_forward_ios,
+                                            color: const Color(0xFF141414)
+                                                .withOpacity(0.5),
+                                            size: 14,
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -205,32 +306,75 @@ class _HomeScreenState extends State<HomeScreen> {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      const LeaderboardScreen(),
-                                ),
-                              );
-                            },
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.diamond_outlined,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$_totalPoints',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
+                            onTap: () async {
+                              final scores = await _getScoreBreakdown();
+                              if (mounted) {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    backgroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    title: const Text(
+                                      'Points Breakdown',
+                                      style: TextStyle(
+                                        color: Color(0xFF141414),
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _buildScoreRow(
+                                            'Games', scores['games']!),
+                                        const SizedBox(height: 8),
+                                        _buildScoreRow(
+                                            'Practice', scores['practice']!),
+                                        const Divider(),
+                                        _buildScoreRow(
+                                            'Total', scores['total']!,
+                                            isTotal: true),
+                                      ],
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text(
+                                          'Close',
+                                          style: TextStyle(
+                                            color: Color(0xFFFF5A1A),
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                );
+                              }
+                            },
+                            child: Container(
+                              constraints: const BoxConstraints(minWidth: 80),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(
+                                    Icons.diamond_outlined,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _formatScore(_totalPoints),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -466,6 +610,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                       },
                     ),
+                    SectionCard(
+                      title: 'Voice Chat',
+                      subtitle: 'Have a continuous voice conversation',
+                      imagePath: 'assets/voice_chat.jpg',
+                      backgroundColor: const Color(0xFFE3F2FD),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const VoiceChatScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -570,5 +728,48 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildScoreRow(String label, int points, {bool isTotal = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: const Color(0xFF141414),
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            fontSize: isTotal ? 16 : 14,
+          ),
+        ),
+        Row(
+          children: [
+            Icon(
+              Icons.stars_rounded,
+              color: const Color(0xFFFF5A1A),
+              size: isTotal ? 20 : 16,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              points.toString(),
+              style: TextStyle(
+                color: const Color(0xFF141414),
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+                fontSize: isTotal ? 16 : 14,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _formatScore(int score) {
+    if (score >= 1000000) {
+      return '${(score / 1000000).toStringAsFixed(1)}M';
+    } else if (score >= 1000) {
+      return '${(score / 1000).toStringAsFixed(1)}K';
+    }
+    return score.toString();
   }
 }

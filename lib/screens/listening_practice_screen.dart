@@ -9,7 +9,8 @@ import 'dart:math';
 import '../widgets/practice_results_dialog.dart';
 
 class ListeningPracticeScreen extends StatefulWidget {
-  const ListeningPracticeScreen({super.key});
+  final String level;
+  const ListeningPracticeScreen({super.key, required this.level});
 
   @override
   State<ListeningPracticeScreen> createState() =>
@@ -36,12 +37,16 @@ class _ListeningPracticeScreenState extends State<ListeningPracticeScreen>
   int pointsPerCorrectAnswer = 20;
   bool isAnimating = false;
   late DateTime _startTime;
+  late DateTime _questionStartTime;
 
   // Update color palette to match games screen
-  static const Color primaryColor = Color(0xFFFF5A1A); // Orange from games screen
-  static const Color secondaryColor = Color(0xFF2F6FED); // Blue from games screen
+  static const Color primaryColor =
+      Color(0xFFFF5A1A); // Orange from games screen
+  static const Color secondaryColor =
+      Color(0xFF2F6FED); // Blue from games screen
   static const Color accentColor = Color(0xFF4CAF50); // Green from games screen
-  static const Color backgroundColor = Color(0xFFF7F0EB); // Light background from games screen
+  static const Color backgroundColor =
+      Color(0xFFF7F0EB); // Light background from games screen
   static const Color surfaceColor = Colors.white;
   static const Color textColor = Color(0xFF1C1C1E);
 
@@ -64,10 +69,14 @@ class _ListeningPracticeScreenState extends State<ListeningPracticeScreen>
   bool isVisualizing = false;
   List<double> audioVisualizerBars = List.generate(30, (index) => 0.0);
 
+  // Update the constants
+  static const int basePointsPerQuestion = 10; // Changed from 20
+
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
+    _questionStartTime = DateTime.now();
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -174,9 +183,25 @@ class _ListeningPracticeScreenState extends State<ListeningPracticeScreen>
     Overlay.of(context).insert(overlay);
   }
 
+  int _calculateTimeBonus(Duration timeSpent) {
+    const int basePoints = 10;
+    const int maxTimeBonus = 5;
+    const int timeThreshold = 10;
+
+    final seconds = timeSpent.inSeconds;
+    if (seconds <= timeThreshold) {
+      final bonus =
+          ((timeThreshold - seconds) / timeThreshold * maxTimeBonus).round();
+      return basePoints + bonus;
+    }
+
+    return basePoints;
+  }
+
   void _checkAnswer() {
     if (isAnswered) return;
 
+    final timeSpent = DateTime.now().difference(_questionStartTime);
     final userAnswer = _answerController.text.trim().toLowerCase();
     final correctAnswer = words[currentWordIndex].toLowerCase();
 
@@ -185,12 +210,7 @@ class _ListeningPracticeScreenState extends State<ListeningPracticeScreen>
 
       if (userAnswer == correctAnswer) {
         correctAnswers++;
-        final points = Provider.of<ProgressService>(context, listen: false)
-            .calculatePoints(
-          correctAnswers: correctAnswers,
-          totalQuestions: words.length,
-          streak: correctAnswers,
-        );
+        final points = _calculateTimeBonus(timeSpent);
         currentPoints += points;
 
         // Update progress immediately
@@ -221,6 +241,8 @@ class _ListeningPracticeScreenState extends State<ListeningPracticeScreen>
             currentWordIndex++;
             isAnswered = false;
             _answerController.clear();
+            _questionStartTime =
+                DateTime.now(); // Reset timer for next question
             _loadCurrentWord();
           } else {
             _showFinalResults();
@@ -235,7 +257,9 @@ class _ListeningPracticeScreenState extends State<ListeningPracticeScreen>
     final minutes = timeSpent.inMinutes;
     final seconds = timeSpent.inSeconds % 60;
     final percentage = (correctAnswers / words.length * 100).round();
-    final points = (percentage * 10).round();
+
+    // Use currentPoints which accumulates the 10 points + bonus per correct answer
+    final points = currentPoints;
 
     // Final update to progress
     Provider.of<ProgressService>(context, listen: false).updateCategoryProgress(

@@ -54,11 +54,9 @@ class _HangmanGameState extends State<HangmanGame> {
             _guessedLetters[i] = true;
           }
         }
+        // Add points to local score only
         _score += 2;
-        // Update score immediately
-        ScoreService.updateGameScore(2);
       } else {
-        // Wrong guess
         _wrongGuesses++;
       }
 
@@ -80,7 +78,11 @@ class _HangmanGameState extends State<HangmanGame> {
   }
 
   void _showGameComplete(bool won) async {
-    await _updateTotalScore(_score);
+    if (won) {
+      // Only update score if player won
+      await ScoreService.updateGameScore(_score);
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -231,7 +233,8 @@ class _HangmanGameState extends State<HangmanGame> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: (_maxWrongGuesses - _wrongGuesses) / _maxWrongGuesses,
+                          value: (_maxWrongGuesses - _wrongGuesses) /
+                              _maxWrongGuesses,
                           backgroundColor: Colors.white.withOpacity(0.2),
                           valueColor: const AlwaysStoppedAnimation<Color>(
                             Colors.white,
@@ -334,33 +337,34 @@ class _HangmanGameState extends State<HangmanGame> {
                 runSpacing: 8,
                 children: List.generate(
                   26,
-                  (index) {
-                    final letter = String.fromCharCode(65 + index);
-                    final isUsed = _usedLetters.contains(letter);
-                    return SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: ElevatedButton(
-                        onPressed: isUsed ? null : () => _handleLetterPress(letter),
-                        style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          backgroundColor: const Color(0xFFFF5A1A),
-                          disabledBackgroundColor: const Color(0xFFFF5A1A).withOpacity(0.3),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: Text(
-                          letter,
-                          style: const TextStyle(
-                            fontFamily: 'CraftworkGrotesk',
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                  (index) => SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: ElevatedButton(
+                      onPressed:
+                          _usedLetters.contains(String.fromCharCode(65 + index))
+                              ? null
+                              : () => _handleLetterPress(
+                                  String.fromCharCode(65 + index)),
+                      style: ElevatedButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        backgroundColor: const Color(0xFFFF5A1A),
+                        disabledBackgroundColor:
+                            const Color(0xFFFF5A1A).withOpacity(0.3),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                    );
-                  },
+                      child: Text(
+                        String.fromCharCode(65 + index),
+                        style: const TextStyle(
+                          fontFamily: 'CraftworkGrotesk',
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

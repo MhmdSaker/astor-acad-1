@@ -4,20 +4,28 @@ import '../widgets/progress_display.dart';
 import 'package:provider/provider.dart';
 import '../widgets/results_dialog.dart';
 import '../widgets/practice_results_dialog.dart';
+import '../data/vocabulary_questions.dart';
+import '../models/practice_question.dart';
 
 class VocabularyPracticeScreen extends StatefulWidget {
-  const VocabularyPracticeScreen({super.key});
+  final String level;
+  
+  const VocabularyPracticeScreen({
+    super.key,
+    required this.level,
+  });
 
   @override
-  State<VocabularyPracticeScreen> createState() =>
-      _VocabularyPracticeScreenState();
+  State<VocabularyPracticeScreen> createState() => _VocabularyPracticeScreenState();
 }
 
 class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
     with SingleTickerProviderStateMixin {
   // Update color palette to match games screen
-  static const Color primaryColor = Color(0xFFFF5A1A); // Orange from games screen
-  static const Color secondaryColor = Color(0xFF2F6FED); // Blue from games screen
+  static const Color primaryColor =
+      Color(0xFFFF5A1A); // Orange from games screen
+  static const Color secondaryColor =
+      Color(0xFF2F6FED); // Blue from games screen
   static const Color accentColor = Color(0xFF4CAF50); // Green from games screen
   static const Color backgroundColor = Color(0xFFF7F0EB); // Light background
   static const Color surfaceColor = Colors.white;
@@ -35,75 +43,20 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
   bool isQuizFinished = false;
   late final String category = 'vocabulary';
   int currentPoints = 0;
-  int pointsPerCorrectAnswer = 20;
+  static const int basePointsPerQuestion = 10;
   double progressAnimation = 0.0;
   double masteryAnimation = 0.0;
   int totalQuestions = 10;
   late DateTime _startTime;
-
-  final List<Map<String, dynamic>> words = [
-    {
-      'word': 'House',
-      'meaning': 'A building for human habitation',
-      'options': [
-        'A type of vehicle',
-        'A building for living',
-        'A kind of food',
-        'A piece of furniture'
-      ],
-      'correct': 1
-    },
-    {
-      'word': 'Car',
-      'meaning': 'A road vehicle powered by an engine',
-      'options': [
-        'A flying machine',
-        'A water vessel',
-        'A road vehicle',
-        'A building'
-      ],
-      'correct': 2
-    },
-    {
-      'word': 'Book',
-      'meaning': 'A written or printed work',
-      'options': [
-        'A digital device',
-        'A written work',
-        'A type of food',
-        'A piece of clothing'
-      ],
-      'correct': 1
-    },
-    {
-      'word': 'Phone',
-      'meaning': 'A device for communication',
-      'options': [
-        'A communication device',
-        'A kitchen appliance',
-        'A piece of furniture',
-        'A type of food'
-      ],
-      'correct': 0
-    },
-    {
-      'word': 'Computer',
-      'meaning': 'An electronic device for processing data',
-      'options': [
-        'A musical instrument',
-        'A cooking device',
-        'An electronic device',
-        'A type of vehicle'
-      ],
-      'correct': 2
-    },
-  ];
+  late DateTime _questionStartTime;
+  late List<PracticeQuestion> questions;
 
   final progressService = ProgressService();
 
   @override
   void initState() {
     super.initState();
+    questions = VocabularyQuestions.questions[widget.level] ?? [];
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
@@ -115,6 +68,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
     _startTime = DateTime.now();
+    _questionStartTime = DateTime.now();
   }
 
   void _showFeedbackAnimation(bool isCorrect) {
@@ -158,7 +112,8 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: (isCorrect ? accentColor : Colors.red).withOpacity(0.3),
+                          color: (isCorrect ? accentColor : Colors.red)
+                              .withOpacity(0.3),
                           blurRadius: 20,
                           spreadRadius: 5,
                         ),
@@ -203,7 +158,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                                 child: Transform.translate(
                                   offset: Offset(0, 20 * (1 - value)),
                                   child: Text(
-                                    'Correct meaning: ${words[currentWord]['meaning']}',
+                                    'Correct meaning: ${questions[currentWord].meaning ?? 'No meaning provided'}',
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.9),
                                       fontSize: 16,
@@ -324,7 +279,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                     children: [
                       _buildStatItem(
                         'Score',
-                        '$correctAnswers/${words.length}',
+                        '$correctAnswers/${questions.length}',
                         Icons.check_circle_outline,
                         const Color(0xFF4CAF50),
                       ),
@@ -392,22 +347,40 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
     return const Color(0xFFE53935);
   }
 
+  int _calculateTimeBonus(Duration timeSpent) {
+    // Base points for answering correctly
+    const int basePoints = 10;
+    // Maximum time bonus possible
+    const int maxTimeBonus = 5;
+    // Time threshold in seconds (faster = more bonus)
+    const int timeThreshold = 10;
+
+    // Calculate bonus based on response time
+    final seconds = timeSpent.inSeconds;
+    if (seconds <= timeThreshold) {
+      // More bonus for faster responses
+      final bonus =
+          ((timeThreshold - seconds) / timeThreshold * maxTimeBonus).round();
+      return basePoints + bonus;
+    }
+
+    // Just base points if took longer than threshold
+    return basePoints;
+  }
+
   void _checkAnswer(int index) {
     if (isAnswered) return;
 
-    final correctIndex = words[currentWord]['correct'] as int;
+    final timeSpent = DateTime.now().difference(_questionStartTime);
+    final correctIndex = questions[currentWord].correct;
+
     setState(() {
       isAnswered = true;
       selectedAnswer = index;
 
       if (index == correctIndex) {
         correctAnswers++;
-        final points = Provider.of<ProgressService>(context, listen: false)
-            .calculatePoints(
-          correctAnswers: correctAnswers,
-          totalQuestions: words.length,
-          streak: correctAnswers,
-        );
+        final points = _calculateTimeBonus(timeSpent);
         currentPoints += points;
 
         // Update progress immediately
@@ -415,13 +388,13 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
             .updateCategoryProgress(
           category: category,
           correctAnswers: correctAnswers,
-          totalQuestions: words.length,
+          totalQuestions: questions.length,
           points: points,
           timeSpent: DateTime.now().difference(_startTime),
         );
 
-        progressAnimation = (currentWord + 1) / words.length;
-        masteryAnimation = correctAnswers / words.length;
+        progressAnimation = (currentWord + 1) / questions.length;
+        masteryAnimation = correctAnswers / questions.length;
 
         _showPointsGainAnimation(points);
         _showFeedbackAnimation(true);
@@ -434,10 +407,12 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
     Future.delayed(const Duration(milliseconds: 1200), () {
       if (mounted) {
         setState(() {
-          if (currentWord < words.length - 1) {
+          if (currentWord < questions.length - 1) {
             currentWord++;
             isAnswered = false;
             selectedAnswer = -1;
+            _questionStartTime =
+                DateTime.now(); // Reset timer for next question
           } else {
             _showFinalResults();
           }
@@ -450,14 +425,17 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
     final timeSpent = DateTime.now().difference(_startTime);
     final minutes = timeSpent.inMinutes;
     final seconds = timeSpent.inSeconds % 60;
-    final percentage = (correctAnswers / words.length * 100).round();
-    final points = (percentage * 10).round();
+    final percentage = (correctAnswers / questions.length * 100).round();
+
+    // Update this line - use currentPoints instead of calculating from percentage
+    final points =
+        currentPoints; // This already contains the base 10 + any time bonuses
 
     // Final update to progress
     Provider.of<ProgressService>(context, listen: false).updateCategoryProgress(
       category: category,
       correctAnswers: correctAnswers,
-      totalQuestions: words.length,
+      totalQuestions: questions.length,
       points: points,
       timeSpent: timeSpent,
     );
@@ -467,7 +445,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
       barrierDismissible: false,
       builder: (context) => PracticeResultsDialog(
         correctAnswers: correctAnswers,
-        totalQuestions: words.length,
+        totalQuestions: questions.length,
         timeSpent: '$minutes:${seconds.toString().padLeft(2, '0')}',
         accuracy: percentage,
         points: points,
@@ -579,7 +557,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                   const SizedBox(width: 16),
                   Expanded(
                     child: Text(
-                      words[currentWord]['options'][index],
+                      questions[currentWord].options[index],
                       style: TextStyle(
                         color: textColor.withOpacity(isAnswered ? 0.9 : 1),
                         fontSize: 18,
@@ -619,7 +597,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
       return primaryColor;
     }
 
-    final correctIndex = words[currentWord]['correct'] as int;
+    final correctIndex = questions[currentWord].correct;
     if (index == correctIndex) {
       return accentColor;
     }
@@ -684,7 +662,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Word ${currentWord + 1} of ${words.length}',
+                            'Word ${currentWord + 1} of ${questions.length}',
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.8),
                               fontSize: 16,
@@ -745,7 +723,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                             ),
                           ),
                           Text(
-                            '${((currentWord + 1) / words.length * 100).toInt()}%',
+                            '${((currentWord + 1) / questions.length * 100).toInt()}%',
                             style: const TextStyle(
                               fontFamily: 'CraftworkGrotesk',
                               color: Colors.white,
@@ -759,7 +737,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: (currentWord + 1) / words.length,
+                          value: (currentWord + 1) / questions.length,
                           backgroundColor: Colors.white.withOpacity(0.2),
                           valueColor: const AlwaysStoppedAnimation<Color>(
                             Colors.white,
@@ -802,7 +780,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                   child: Column(
                     children: [
                       Text(
-                        words[currentWord]['word']!,
+                        questions[currentWord].word ?? 'Word',
                         style: TextStyle(
                           fontFamily: 'CraftworkGrotesk',
                           color: textColor,
@@ -812,7 +790,8 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                       ),
                       const SizedBox(height: 12),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
                         decoration: BoxDecoration(
                           color: primaryColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
@@ -833,7 +812,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                 const SizedBox(height: 16),
                 Column(
                   children: List.generate(
-                    (words[currentWord]['options'] as List).length,
+                    questions[currentWord].options.length,
                     (index) => Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
@@ -864,7 +843,8 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                                   width: 32,
                                   height: 32,
                                   decoration: BoxDecoration(
-                                    color: _getButtonColor(index).withOpacity(0.1),
+                                    color:
+                                        _getButtonColor(index).withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Center(
@@ -882,7 +862,7 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Text(
-                                    words[currentWord]['options'][index],
+                                    questions[currentWord].options[index],
                                     style: TextStyle(
                                       fontFamily: 'CraftworkGrotesk',
                                       color: textColor,
@@ -911,5 +891,20 @@ class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  // When practice is complete
+  void _onPracticeComplete() {
+    Navigator.pop(context); // Return to practice screen
+    if (mounted) {
+      Provider.of<ProgressService>(context, listen: false)
+          .updateCategoryProgress(
+        category: 'vocabulary',
+        correctAnswers: correctAnswers,
+        totalQuestions: totalQuestions,
+        points: currentPoints,
+        timeSpent: DateTime.now().difference(_startTime),
+      );
+    }
   }
 }

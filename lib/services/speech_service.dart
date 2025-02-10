@@ -5,28 +5,33 @@ import 'package:path_provider/path_provider.dart';
 import '../config/api_config.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:html' if (dart.library.io) 'dart:io' as html;
-import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'dart:async';
+import 'audio_handler.dart';
+import 'audio_handler_interface.dart';
+
+// Create a conditional import for web audio handling
+import 'web_audio_handler.dart' if (dart.library.io) 'mock_web_audio_handler.dart';
 
 class SpeechService {
   final SpeechToText _speech = SpeechToText();
   AudioPlayer _audioPlayer = AudioPlayer();
   bool _isListening = false;
-  final String _currentText = '';
   Timer? _silenceTimer;
-  final bool _hasSentFinalResult = false;
   static const silenceThreshold = Duration(milliseconds: 1000);
   bool _isSpeaking = false;
-  html.AudioElement? _webAudio; // Track web audio element
+  final AudioHandlerInterface _audioHandler = createAudioHandler();
+
+  // Remove getter/setter and just make the field public if needed
+  bool get isListening => _isListening;
+  bool get isSpeaking => _isSpeaking;
 
   Future<void> initialize() async {
     await _speech.initialize(
       onStatus: (status) {
-        print('Speech status: $status');
+        debugPrint('Speech status: $status');
       },
-      onError: (error) => print('Speech error: $error'),
+      onError: (error) => debugPrint('Speech error: $error'),
     );
   }
 
@@ -40,12 +45,12 @@ class SpeechService {
       try {
         await _speech.initialize(
           onStatus: (status) {
-            print('Speech status: $status');
+            debugPrint('Speech status: $status');
             if (status == 'notListening') {
               onSilence?.call();
             }
           },
-          onError: (error) => print('Speech error: $error'),
+          onError: (error) => debugPrint('Speech error: $error'),
         );
 
         await _speech.listen(
@@ -62,12 +67,14 @@ class SpeechService {
           localeId: 'ar-SA',
           listenFor: const Duration(seconds: 30),
           pauseFor: const Duration(seconds: 3),
-          partialResults: true,
-          cancelOnError: false,
-          listenMode: ListenMode.dictation,
+          listenOptions: SpeechListenOptions(
+            partialResults: true,
+            cancelOnError: false,
+            listenMode: ListenMode.dictation,
+          ),
         );
       } catch (e) {
-        print('Listen error: $e');
+        debugPrint('Listen error: $e');
         _isListening = false;
       }
     }
@@ -82,17 +89,11 @@ class SpeechService {
 
   Future<void> stopSpeaking() async {
     try {
-      print('Force stopping all audio...');
+      debugPrint('Force stopping all audio...');
       _isSpeaking = false;
 
       if (kIsWeb) {
-        final elements = html.window.document.getElementsByTagName('audio');
-        for (var i = 0; i < elements.length; i++) {
-          final audio = elements[i] as html.AudioElement;
-          audio.pause();
-          audio.currentTime = 0;
-          audio.remove();
-        }
+        await _audioHandler.stopAllAudio();
       } else {
         if (_audioPlayer.playing) {
           await _audioPlayer.stop();
@@ -100,33 +101,25 @@ class SpeechService {
         await _audioPlayer.dispose();
         _audioPlayer = AudioPlayer();
       }
-      print('All audio stopped successfully');
+      debugPrint('All audio stopped successfully');
     } catch (e) {
-      print('Error stopping audio: $e');
+      debugPrint('Error stopping audio: $e');
     }
   }
 
   Future<void> forceStopAudio() async {
     try {
-      print('Force stopping ElevenLabs audio...');
-      _isSpeaking = false; // Set this first
+      debugPrint('Force stopping ElevenLabs audio...');
+      _isSpeaking = false;
 
       if (kIsWeb) {
-        // Stop web audio
-        if (_webAudio != null) {
-          _webAudio!.pause();
-          _webAudio!.remove();
-          _webAudio = null;
+        final currentAudio = _audioHandler.audioElement;
+        if (currentAudio != null) {
+          currentAudio.pause();
+          currentAudio.remove();
         }
-        // Clean up any other audio elements
-        final elements = html.window.document.getElementsByTagName('audio');
-        for (var i = elements.length - 1; i >= 0; i--) {
-          final audio = elements[i] as html.AudioElement;
-          audio.pause();
-          audio.remove();
-        }
+        await _audioHandler.stopAllAudio();
       } else {
-        // Stop mobile audio
         if (_audioPlayer.playing) {
           await _audioPlayer.stop();
           await _audioPlayer.dispose();
@@ -134,30 +127,20 @@ class SpeechService {
         }
       }
 
-      print('Audio stopped successfully');
+      debugPrint('Audio stopped successfully');
     } catch (e) {
-      print('Error stopping audio: $e');
+      debugPrint('Error stopping audio: $e');
     } finally {
       _isSpeaking = false;
     }
   }
 
-  bool get isSpeaking => _isSpeaking;
-  set isSpeaking(bool value) => _isSpeaking = value;
-
   Future<void> killAllAudio() async {
     try {
-      print('Killing all audio immediately...');
+      debugPrint('Killing all audio immediately...');
 
-      // إيقاف فوري لكل الأصوات
       if (kIsWeb) {
-        final elements = html.window.document.getElementsByTagName('audio');
-        for (var i = elements.length - 1; i >= 0; i--) {
-          final audio = elements[i] as html.AudioElement;
-          audio.pause();
-          audio.src = ''; // مسح المصدر
-          audio.remove(); // إزالة العنصر
-        }
+        await _audioHandler.stopAllAudio();
       } else {
         if (_audioPlayer.playing) {
           _audioPlayer.stop();
@@ -167,14 +150,14 @@ class SpeechService {
       }
 
       _isSpeaking = false;
-      print('All audio killed successfully');
+      debugPrint('All audio killed successfully');
     } catch (e) {
-      print('Error killing audio: $e');
+      debugPrint('Error killing audio: $e');
     }
   }
 
-  Future<void> speakWithElevenLabs(String text) async {
-    if (_isSpeaking) return;
+  Future<bool> speakWithElevenLabs(String text) async {
+    if (_isSpeaking) return false;
 
     try {
       _isSpeaking = true;
@@ -199,65 +182,44 @@ class SpeechService {
         }),
       );
 
-      if (!_isSpeaking) return; // Check if stopped
+      if (!_isSpeaking) return false;
 
       if (response.statusCode == 200) {
         if (kIsWeb) {
-          final blob = html.Blob([response.bodyBytes]);
-          final url = html.Url.createObjectUrlFromBlob(blob);
-          _webAudio = html.AudioElement()
-            ..src = url
-            ..autoplay = true;
-
-          try {
-            if (!_isSpeaking) {
-              _webAudio?.pause();
-              _webAudio?.remove();
-              _webAudio = null;
-              return;
-            }
-            await _webAudio?.onEnded.first;
-          } finally {
-            html.Url.revokeObjectUrl(url);
-            _webAudio = null;
-            _isSpeaking = false;
-          }
+          await _audioHandler.playAudio(response.bodyBytes);
+          return true;
         } else {
           final dir = await getTemporaryDirectory();
           final file = File('${dir.path}/response_audio.mp3');
           await file.writeAsBytes(response.bodyBytes);
 
-          if (!_isSpeaking) {
-            await file.delete();
-            return;
-          }
+          if (!_isSpeaking) return false;
 
           try {
             await _audioPlayer.setFilePath(file.path);
-            if (!_isSpeaking) return; // Check again before playing
+            if (!_isSpeaking) return false;
             await _audioPlayer.play();
             await _audioPlayer.playerStateStream.firstWhere(
               (state) =>
                   state.processingState == ProcessingState.completed ||
                   !_isSpeaking,
             );
+            return true;
           } finally {
             _isSpeaking = false;
             await file.delete();
           }
         }
       }
+      return false;
     } catch (e) {
-      print('Speech error: $e');
+      debugPrint('Speech error: $e');
+      return false;
     } finally {
       _isSpeaking = false;
-      _webAudio = null;
     }
   }
 
-  bool get isListening => _isListening;
-
-  @override
   void dispose() async {
     _silenceTimer?.cancel();
     await _audioPlayer.dispose();

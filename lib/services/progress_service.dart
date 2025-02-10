@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import './score_service.dart';
 
 class ProgressService extends ChangeNotifier {
   // Core stats
@@ -331,13 +332,13 @@ class ProgressService extends ChangeNotifier {
     };
   }
 
-  void updateCategoryProgress({
+  Future<void> updateCategoryProgress({
     required String category,
     required int correctAnswers,
     required int totalQuestions,
     required int points,
     required Duration timeSpent,
-  }) {
+  }) async {
     // Update points
     addPoints(category, points);
 
@@ -360,6 +361,9 @@ class ProgressService extends ChangeNotifier {
       achievements['rewards']['badges'].add('$category Level $currentLevel');
       achievements['rewards']['trophies']++;
     }
+
+    // Update practice score
+    await ScoreService.updatePracticeScore(points);
 
     notifyListeners();
   }

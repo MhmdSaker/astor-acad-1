@@ -140,3 +140,9 @@ flutter:
           weight: 700  # Bold
         - asset: assets/fonts/CraftworkGrotesk-Heavy.ttf
           weight: 800  # Heavy (adjust if needed, e.g., 900)
+
+  plugin:
+    platforms:
+      web:
+        pluginClass: WebAudioHandlerPlugin
+        fileName: services/web/audio_handler_web.dart

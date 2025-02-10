@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import '../config/api_config.dart';
-import '../services/speech_service.dart';
-import 'dart:async';
+import 'voice_chat_screen.dart';
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -18,17 +19,14 @@ class _ChatScreenState extends State<ChatScreen> {
   late GenerativeModel _model;
   late ChatSession _chat;
   bool _isTyping = false;
-  final SpeechService _speechService = SpeechService();
-  bool _isListening = false;
   bool _isProcessing = false;
-  String _recognizedText = '';
-  Timer? silenceTimer;
+  static const String _chatHistoryKey = 'chat_history';
 
   @override
   void initState() {
     super.initState();
     _initializeChat();
-    _speechService.initialize();
+    _loadChatHistory();
   }
 
   void _initializeChat() {
@@ -42,143 +40,12 @@ class _ChatScreenState extends State<ChatScreen> {
       _messages.add(
         ChatMessage(
           text:
-              "Hello! I'm your AI language tutor. How can I help you learn today?",
+              "مرحباً! I'm Linguini, your language learning companion. How can I help you practice today?",
           isUser: false,
-          senderName: "Astor",
+          senderName: "Linguini",
         ),
       );
     });
-  }
-
-  Future<void> _handleVoiceInput() async {
-    await _speechService.forceStopAudio();
-    setState(() => _isProcessing = false);
-
-    if (_isListening) {
-      await _speechService.stop();
-      setState(() {
-        _isListening = false;
-        _isProcessing = false;
-        // Remove temporary message if it exists
-        if (_messages.isNotEmpty && _messages.last.text == "جاري الاستماع...") {
-          _messages.removeLast();
-        }
-      });
-      return;
-    }
-
-    // Start new recording
-    setState(() {
-      _isListening = true;
-      _recognizedText = '';
-      _messages.add(ChatMessage(
-        text: "جاري الاستماع...",
-        isUser: true,
-        senderName: "You",
-        isVoiceMessage: true,
-      ));
-    });
-    _scrollToBottom();
-
-    try {
-      String lastRecognizedText = '';
-      await _speechService.listen(
-        onTextRecognized: (text) async {
-          if (!_isProcessing && text.isNotEmpty) {
-            // Update message in real-time
-            setState(() {
-              _messages.last = ChatMessage(
-                text: text,
-                isUser: true,
-                senderName: "You",
-                isVoiceMessage: true,
-              );
-            });
-            _scrollToBottom();
-
-            lastRecognizedText = text;
-            silenceTimer?.cancel();
-            silenceTimer = Timer(const Duration(seconds: 3), () async {
-              if (!_isProcessing && lastRecognizedText.isNotEmpty) {
-                _isProcessing = true;
-                await _speechService.stop();
-
-                // Add AI typing indicator
-                setState(() {
-                  _messages.add(ChatMessage(
-                    text: "",
-                    isUser: false,
-                    senderName: "Astor",
-                    isVoiceMessage: true,
-                    isTyping: true,
-                  ));
-                });
-                _scrollToBottom();
-
-                try {
-                  final prompt = '''أنت مساعد ذكي في برنامج لتعليم اللغات.
-يجب أن تكون ردودك واضحة ومباشرة وبدون أي رموز خاصة أو علامات نجمية وقصيرة لا تتجاوز 3 أسطر.
-رد على هذه الرسالة: $lastRecognizedText''';
-
-                  final response =
-                      await _chat.sendMessage(Content.text(prompt));
-
-                  if (response.text != null) {
-                    final aiMessage = response.text!
-                        .replaceAll('*', '')
-                        .replaceAll('_', '')
-                        .replaceAll('#', '')
-                        .trim();
-
-                    setState(() {
-                      if (_messages.last.isTyping) {
-                        _messages.removeLast();
-                      }
-
-                      _messages.add(ChatMessage(
-                        text: aiMessage,
-                        isUser: false,
-                        senderName: "Astor",
-                        isVoiceMessage: true,
-                      ));
-                      _isProcessing = false;
-                      _isListening = false;
-                    });
-                    _scrollToBottom();
-
-                    if (!_speechService.isSpeaking) {
-                      await _speechService.speakWithElevenLabs(aiMessage);
-                    }
-                  }
-                } catch (e) {
-                  print('Error: $e');
-                  setState(() {
-                    _isProcessing = false;
-                    _isListening = false;
-                    if (_messages.last.isTyping) {
-                      _messages.removeLast();
-                    }
-                    _messages.add(ChatMessage(
-                      text: "عذراً، حدث خطأ. حاول مرة أخرى.",
-                      isUser: false,
-                      senderName: "Astor",
-                      isVoiceMessage: true,
-                    ));
-                  });
-                  _scrollToBottom();
-                }
-              }
-            });
-          }
-        },
-      );
-    } catch (e) {
-      print('Voice input error: $e');
-      setState(() {
-        _isListening = false;
-        _isProcessing = false;
-      });
-    }
   }
 
   Future<void> _handleSubmitted(String text) async {
@@ -193,60 +60,54 @@ class _ChatScreenState extends State<ChatScreen> {
         isUser: true,
         senderName: "You",
       ));
-      // Add typing indicator for AI
       _messages.add(ChatMessage(
         text: "",
         isUser: false,
-        senderName: "Astor",
+        senderName: "Linguini",
         isTyping: true,
       ));
       _isTyping = true;
     });
 
+    await _saveChatHistory();
     _scrollToBottom();
 
     try {
       setState(() => _isProcessing = true);
 
-      final response = await _chat.sendMessage(Content.text(userMessage));
+      final prompt =
+          '''You are Linguini, a friendly AI tutor for language learners. Always respond in the user's language (Arabic/English), keeping answers concise (1-4 lines). Correct mistakes gently, provide simple explanations, practical examples, and mini-exercises (e.g., 'Try repeating:', 'Translate this:'). Focus on vocabulary, grammar, and pronunciation. Use encouraging phrases like 'Great effort!' or 'Let's practice together!' to motivate learners. Stay patient, clear, and adapt to their proficiency level.
+
+User message: $userMessage''';
+
+      final response = await _chat.sendMessage(Content.text(prompt));
       final aiMessage = response.text ?? 'Sorry, I couldn\'t understand that.';
 
       setState(() {
         _isTyping = false;
         _isProcessing = false;
-        // Remove typing indicator
         _messages.removeLast();
         _messages.add(ChatMessage(
           text: aiMessage,
           isUser: false,
-          senderName: "Astor",
+          senderName: "Linguini",
         ));
       });
 
+      await _saveChatHistory();
       _scrollToBottom();
-      if (!_speechService.isSpeaking) {
-        await _speechService.speakWithElevenLabs(aiMessage);
-      }
     } catch (e) {
       setState(() {
         _isTyping = false;
         _isProcessing = false;
-        // Remove typing indicator
         _messages.removeLast();
         _messages.add(ChatMessage(
           text: "An error occurred. Please try again.",
           isUser: false,
-          senderName: "Astor",
+          senderName: "Linguini",
         ));
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Opening AI Chat...'),
-          duration: Duration(milliseconds: 500),
-          backgroundColor: Color(0xFFFF5A1A),
-        ),
-      );
+      await _saveChatHistory();
     }
   }
 
@@ -291,36 +152,24 @@ class _ChatScreenState extends State<ChatScreen> {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(30),
-          onTap: () async {
-            if (_speechService.isSpeaking) {
-              // Stop speaking
-              await _speechService.forceStopAudio();
-              setState(() => _isProcessing = false);
-            } else {
-              // Start/stop recording
-              await _handleVoiceInput();
-            }
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const VoiceChatScreen(),
+              ),
+            );
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: _speechService.isSpeaking || _isListening
-                  ? const Color(0xFFFF5A1A).withOpacity(0.2)
-                  : const Color(0xFFF7F0EB),
+              color: const Color(0xFFF7F0EB),
             ),
-            child: Icon(
-              _speechService.isSpeaking
-                  ? Icons.stop_circle
-                  : _isListening
-                      ? Icons.mic
-                      : Icons.mic_none,
-              color: _speechService.isSpeaking
-                  ? const Color(0xFFFF5A1A)
-                  : _isListening || _isProcessing
-                      ? const Color(0xFFFF5A1A)
-                      : const Color(0xFF141414),
+            child: const Icon(
+              Icons.mic_none,
+              color: Color(0xFF141414),
               size: 24,
             ),
           ),
@@ -339,11 +188,13 @@ class _ChatScreenState extends State<ChatScreen> {
         leading: GestureDetector(
           onTap: () => Navigator.pop(context),
           child: Container(
-            margin: const EdgeInsets.only(left: 16),
-            padding: const EdgeInsets.all(8),
+            margin: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+              ),
             ),
             child: const Icon(
               Icons.arrow_back,
@@ -445,9 +296,9 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xFFF7F0EB), // bgColor for input area
+              color: Colors.white,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.1),
@@ -461,9 +312,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFF5A1A)
-                          .withOpacity(0.1), // Light primaryOrange
-                      borderRadius: BorderRadius.circular(24),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFFFF5A1A).withOpacity(0.3),
+                        width: 2,
+                      ),
                     ),
                     child: Row(
                       children: [
@@ -471,13 +325,16 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: TextField(
                             controller: _messageController,
                             enabled: !_isProcessing,
-                            style: const TextStyle(color: Color(0xFF141414)),
+                            style: const TextStyle(
+                              color: Color(0xFF141414),
+                              fontSize: 16,
+                            ),
                             decoration: InputDecoration(
                               hintText:
                                   'Type your message or press the mic to speak...',
                               hintStyle: TextStyle(
-                                color: Color(0xFFFF5A1A)
-                                    .withOpacity(0.7), // Lighter primaryOrange
+                                color: const Color(0xFF141414).withOpacity(0.5),
+                                fontSize: 16,
                               ),
                               border: InputBorder.none,
                               contentPadding: const EdgeInsets.all(16),
@@ -491,8 +348,40 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                _buildSendButton(),
+                const SizedBox(width: 16),
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: _isProcessing
+                          ? [Colors.grey, Colors.grey]
+                          : [
+                              const Color(0xFFFF5A1A),
+                              const Color(0xFFFF5A1A).withOpacity(0.8),
+                            ],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: IconButton(
+                      icon: _isProcessing
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.send, color: Colors.white),
+                      onPressed: _isProcessing
+                          ? null
+                          : () => _handleSubmitted(_messageController.text),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -535,9 +424,17 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove(_chatHistoryKey);
                 setState(() {
                   _messages.clear();
+                  _messages.add(ChatMessage(
+                    text:
+                        "مرحباً! I'm Linguini, your language learning companion. How can I help you practice today?",
+                    isUser: false,
+                    senderName: "Linguini",
+                  ));
                 });
                 Navigator.pop(context);
               },
@@ -555,11 +452,43 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Future<void> _saveChatHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final messagesJson = _messages
+        .map((msg) => {
+              'text': msg.text,
+              'isUser': msg.isUser,
+              'senderName': msg.senderName,
+              'isTyping': msg.isTyping,
+            })
+        .toList();
+    await prefs.setString(_chatHistoryKey, jsonEncode(messagesJson));
+  }
+
+  Future<void> _loadChatHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final chatHistoryJson = prefs.getString(_chatHistoryKey);
+
+    if (chatHistoryJson != null) {
+      final List<dynamic> messagesJson = jsonDecode(chatHistoryJson);
+      setState(() {
+        _messages.clear();
+        _messages.addAll(
+          messagesJson.map((msgJson) => ChatMessage(
+                text: msgJson['text'],
+                isUser: msgJson['isUser'],
+                senderName: msgJson['senderName'],
+                isTyping: msgJson['isTyping'] ?? false,
+              )),
+        );
+      });
+    }
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
-    _speechService.dispose();
     super.dispose();
   }
 }
@@ -568,7 +497,6 @@ class ChatMessage extends StatelessWidget {
   final String text;
   final bool isUser;
   final String senderName;
-  final bool isVoiceMessage;
   final bool isTyping;
 
   const ChatMessage({
@@ -576,7 +504,6 @@ class ChatMessage extends StatelessWidget {
     required this.text,
     required this.isUser,
     required this.senderName,
-    this.isVoiceMessage = false,
     this.isTyping = false,
   });
 
@@ -591,47 +518,95 @@ class ChatMessage extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                senderName,
-                style: const TextStyle(
-                  color: Color(0xFF141414),
-                  fontSize: 14,
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF5A1A).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  senderName,
+                  style: const TextStyle(
+                    color: Color(0xFFFF5A1A),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-              if (isVoiceMessage) ...[
-                const SizedBox(width: 8),
-                Icon(
-                  isUser ? Icons.mic : Icons.volume_up,
-                  color: Color(0xFF141414),
-                  size: 16,
-                ),
-              ],
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: isUser ? const Color(0xFFFF5A1A) : const Color(0xFFE3F2FD),
-              borderRadius: BorderRadius.circular(16),
-              border: isVoiceMessage
+              color: isUser ? const Color(0xFFFF5A1A) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFF5A1A).withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+              border: !isUser
                   ? Border.all(
                       color: const Color(0xFFFF5A1A).withOpacity(0.3),
-                      width: 1,
+                      width: 2,
                     )
                   : null,
             ),
-            child: isTyping
-                ? const TypingIndicator()
-                : Text(
-                    text,
-                    style: TextStyle(
-                      color: isUser ? Colors.white : Color(0xFF141414),
-                      fontSize: 16,
-                    ),
-                  ),
+            child: isTyping ? const TypingIndicator() : _buildText(text),
           ),
         ],
+      ),
+    );
+  }
+
+  String _formatText(String text) {
+    // Handle bold text between asterisks
+    final boldPattern = RegExp(r'\*(.*?)\*');
+    return text.replaceAllMapped(boldPattern, (match) {
+      return '${match[1]}'.replaceAll('*', '');
+    });
+  }
+
+  Widget _buildText(String text) {
+    final List<TextSpan> spans = [];
+    final boldPattern = RegExp(r'\*(.*?)\*');
+    int currentIndex = 0;
+
+    // Find all bold patterns
+    for (final match in boldPattern.allMatches(text)) {
+      // Add text before the bold part
+      if (match.start > currentIndex) {
+        spans.add(TextSpan(
+          text: text.substring(currentIndex, match.start),
+        ));
+      }
+      // Add the bold text
+      spans.add(TextSpan(
+        text: match.group(1),
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ));
+      currentIndex = match.end;
+    }
+
+    // Add any remaining text
+    if (currentIndex < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(currentIndex),
+      ));
+    }
+
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(
+          color: isUser ? Colors.white : const Color(0xFF141414),
+          fontSize: 16,
+          height: 1.5,
+        ),
+        children: spans,
       ),
     );
   }

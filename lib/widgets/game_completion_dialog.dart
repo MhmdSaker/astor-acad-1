@@ -50,12 +50,19 @@ class _GameCompletionDialogState extends State<GameCompletionDialog> {
           child: Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: const Color(0xFF1C1C1E),
+              color: Colors.white,
               borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
               border: Border.all(
                 color: widget.success
                     ? const Color(0xFF4CAF50).withOpacity(0.3)
-                    : const Color(0xFFE53935).withOpacity(0.3),
+                    : const Color(0xFFFF5A1A).withOpacity(0.3),
                 width: 2,
               ),
             ),
@@ -77,11 +84,11 @@ class _GameCompletionDialogState extends State<GameCompletionDialog> {
                 Text(
                   widget.title,
                   style: TextStyle(
-                    fontFamily: 'ChelseaMarket',
+                    fontFamily: 'CraftworkGrotesk',
                     color: widget.success
                         ? const Color(0xFF4CAF50)
-                        : const Color(0xFFE53935),
-                    fontSize: 24,
+                        : const Color(0xFFFF5A1A),
+                    fontSize: 28,
                     fontWeight: FontWeight.bold,
                   ),
                   textAlign: TextAlign.center,
@@ -91,9 +98,10 @@ class _GameCompletionDialogState extends State<GameCompletionDialog> {
                 Text(
                   widget.message,
                   style: const TextStyle(
-                    fontFamily: 'ChelseaMarket',
-                    color: Colors.white70,
+                    fontFamily: 'CraftworkGrotesk',
+                    color: Color(0xFF1C1C1E),
                     fontSize: 16,
+                    fontWeight: FontWeight.w500,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -105,22 +113,26 @@ class _GameCompletionDialogState extends State<GameCompletionDialog> {
                     vertical: 12,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: const Color(0xFFF7F0EB),
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFFFF5A1A).withOpacity(0.2),
+                      width: 1,
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
                         Icons.stars_rounded,
-                        color: Color(0xFFFFD700),
+                        color: Color(0xFFFF5A1A),
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'Score: ${widget.score}',
                         style: const TextStyle(
-                          fontFamily: 'ChelseaMarket',
-                          color: Colors.white,
+                          fontFamily: 'CraftworkGrotesk',
+                          color: Color(0xFF1C1C1E),
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
@@ -139,7 +151,8 @@ class _GameCompletionDialogState extends State<GameCompletionDialog> {
                         Navigator.of(context).pop();
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.1),
+                        backgroundColor: const Color(0xFFF7F0EB),
+                        foregroundColor: const Color(0xFF1C1C1E),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 24,
                           vertical: 12,
@@ -147,13 +160,20 @@ class _GameCompletionDialogState extends State<GameCompletionDialog> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
+                        elevation: 0,
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.home),
                           SizedBox(width: 8),
-                          Text('Home'),
+                          Text(
+                            'Home',
+                            style: TextStyle(
+                              fontFamily: 'CraftworkGrotesk',
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -164,6 +184,7 @@ class _GameCompletionDialogState extends State<GameCompletionDialog> {
                         backgroundColor: widget.success
                             ? const Color(0xFF4CAF50)
                             : const Color(0xFF2F6FED),
+                        foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 24,
                           vertical: 12,
@@ -171,13 +192,20 @@ class _GameCompletionDialogState extends State<GameCompletionDialog> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
+                        elevation: 0,
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.replay_rounded),
                           SizedBox(width: 8),
-                          Text('Play Again'),
+                          Text(
+                            'Play Again',
+                            style: TextStyle(
+                              fontFamily: 'CraftworkGrotesk',
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
