@@ -9,14 +9,15 @@ import '../models/practice_question.dart';
 
 class VocabularyPracticeScreen extends StatefulWidget {
   final String level;
-  
+
   const VocabularyPracticeScreen({
     super.key,
     required this.level,
   });
 
   @override
-  State<VocabularyPracticeScreen> createState() => _VocabularyPracticeScreenState();
+  State<VocabularyPracticeScreen> createState() =>
+      _VocabularyPracticeScreenState();
 }
 
 class _VocabularyPracticeScreenState extends State<VocabularyPracticeScreen>
